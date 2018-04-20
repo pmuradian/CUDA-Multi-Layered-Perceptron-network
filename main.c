@@ -5,6 +5,7 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <errno.h>
+//#include "cuda.h"
 #include "ppm/pnmio.h"
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -23,6 +24,14 @@
 #define FOURTH_LAYER_SIZE 1024
 #define OUTPUT_LAYER_SIZE 62
 #define IMAGE_DIMENTIONS 64*64
+#define RANDOM_FLOAT (float)rand() / (float)RAND_MAX
+
+// CUDA defines
+#define DIM 1024
+#define rnd(x) (x * rand() / RAND_MAX)
+#define INF 2e10f
+#define SPHERES 100
+#define THREADS 256
 
 
 int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
@@ -174,6 +183,13 @@ void train(int **input, int output, int ***weights, int **biases, int layer, int
     }
 }
 
+//__global__ random_width_generator_kernel(float **widths) {
+//    uint i = (blockIdx.x * blockDim.x) + threadIdx.x;
+//    uint j = (blockIdx.y * blockDim.y) + threadIdx.y;
+//
+//    widths[i][j] = RANDOM_FLOAT;
+//}
+
 void readInputFrom(char *path) {
     DIR* FD;
     struct dirent* in_file;
@@ -187,7 +203,7 @@ void readInputFrom(char *path) {
     int img_colors = 0;
     int is_asci = 0;
     int pnm_type = 0;
-    int ***weights;
+    float ***weights;
     int **biases;
 
     int isRandom = 1;
@@ -215,7 +231,7 @@ void readInputFrom(char *path) {
     // Initialize weights
 //    createInitialWeights(weights, isRandom);
 
-    weights = malloc(LAYER_COUNT * sizeof(int*));
+    weights = malloc(LAYER_COUNT * sizeof(float *));
 
     for (int k = 0; k < LAYER_COUNT; k++) {
 
@@ -226,21 +242,26 @@ void readInputFrom(char *path) {
 
         int size = getLayerSize(k);
         int previous_layer_size = getLayerSize(k - 1);
-        int **weigths = malloc(size * sizeof(int*));
+        int **weigths = malloc(size * sizeof(float *));
 
         printf("for layer = %d, previous layer size = %d, current layer size = %d/n", k, previous_layer_size, size);
         fflush( stdout );
 
         for (int i = 0; i < size; i++) {
 
-            weigths[i] = malloc(previous_layer_size * sizeof(int));
+            weigths[i] = malloc(previous_layer_size * sizeof(float));
 
             for (int j = 0; j < previous_layer_size; j++)
-                // weight for node i in layer k from node j in layer k - 1
+//                 weight for node i in layer k from node j in layer k - 1
                 weigths[i][j] = random ? random_double() : 1;
         }
 
         weights[k - 1] = weigths;
+        int block_count = getLayerSize(k) / THREADS;
+
+//        dim3 threads(8, 8);
+//        dim3 grids(, DIM / 16);
+//        random_width_generator_kernel<<<block_count, THREADS>>>(weights);
     }
 
 
