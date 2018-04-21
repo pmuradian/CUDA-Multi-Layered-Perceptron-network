@@ -72,7 +72,7 @@ int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
         return a < b ? b : a;
     }
 
-    int *toGrayScale(int *input, int x_dim, int y_dim) {
+    int *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
         int j = 0;
         int *grayscale = (int*)malloc(IMAGE_DIMENTIONS * sizeof(int));
 
@@ -139,7 +139,7 @@ int **createInitialBiases() {
     return biases;
 }
 
-void train(int **input, int output, int ***weights, int **biases, int layer, int round) {
+/* void train(int **input, int output, int ***weights, int **biases, int layer, int round) {
     int *activation_outputs = (int*)malloc(INPUT_LAYER_SIZE * sizeof(int));
     int size = getLayerSize(layer);
 
@@ -171,7 +171,7 @@ void train(int **input, int output, int ***weights, int **biases, int layer, int
         return;
     }
 
-    weights[layer - 1];
+//    weights[layer - 1];
 
     // For hidden layers
     for (int i = 0; i < size; i++) {
@@ -183,7 +183,7 @@ void train(int **input, int output, int ***weights, int **biases, int layer, int
 
         results[i] = reLU(sum, 0);
     }
-}
+}*/
 
 //__global__ random_width_generator_kernel(float **widths) {
 //    uint i = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -192,7 +192,7 @@ void train(int **input, int output, int ***weights, int **biases, int layer, int
 //    widths[i][j] = RANDOM_FLOAT;
 //}
 
-__global__ train_cuda(int* input, int* weights) {
+__global__ void train_cuda(int* input, float* weights) {
 
 }
 
@@ -209,7 +209,6 @@ void readInputFrom(char *path) {
     int img_colors = 0;
     int is_asci = 0;
     int pnm_type = 0;
-    float **weights;
     int **biases;
 
     int isRandom = 1;
@@ -219,13 +218,17 @@ void readInputFrom(char *path) {
     rewind(file);
     read_ppm_header(file, &x_dim, &y_dim, &img_colors, &is_asci);
 
-    int *original_data = (int*)malloc(3 * x_dim * y_dim * sizeof(int));
-    int *resized_data = (int*)malloc(3 * 64 * 64 * sizeof(int));
+    unsigned char *original_data = (unsigned char*)malloc(3 * x_dim * y_dim * sizeof(char));
+    unsigned char *resized_data = (unsigned char*)malloc(3 * 64 * 64 * sizeof(char));
     int *grayscale[LAYER_COUNT];
     int output = 0;
 
+	int *image_data = (int*)malloc(3 * x_dim * y_dim * sizeof(int));
     // Read image data and resize it to 64x64px
-    read_ppm_data(file, original_data, &is_asci);
+    read_ppm_data(file, image_data, &is_asci);
+	for (int i = 0; i < 3 * x_dim * y_dim; i++) {
+		original_data[i] = image_data[i];	
+}
     stbir_resize_uint8(original_data, x_dim, y_dim, 0, resized_data, 64, 64, 0, 3);
 
     // Convert to grayscale
@@ -248,7 +251,7 @@ void readInputFrom(char *path) {
 
         int size = getLayerSize(k);
         int previous_layer_size = getLayerSize(k - 1);
-        int *weigth = (float*)malloc(size * sizeof(float));
+        float *weigth = (float*)malloc(size * sizeof(float));
 
         printf("for layer = %d, previous layer size = %d, current layer size = %d/n", k, previous_layer_size, size);
         fflush( stdout );
@@ -277,22 +280,22 @@ void readInputFrom(char *path) {
 
 
     for (int i = 0; i < LAYER_COUNT; i++) {
-	int *weight;
-	cudaMalloc((void**)&weight, getLayerSize(i) * sizeof(int));
-	cudaMemcpy(weight, weigths[i], getLayerSize(i) * sizeof(int), cudaMemcpyHostToDevice);
+	float *weight;
+	cudaMalloc((void**)&weight, getLayerSize(i) * sizeof(float));
+	cudaMemcpy(weight, weights[i], getLayerSize(i) * sizeof(float), cudaMemcpyHostToDevice);
 	int *cuda_input;
 	cudaMalloc((void**)&cuda_input, 4096 * sizeof(int));
 	cudaMemcpy(cuda_input, grayscale[0], 4096 * sizeof(int), cudaMemcpyHostToDevice);
-	train_cuda(cuda_input, weight);
-	cudaMemcpy(weights[i], weight, getLayerSize(i) * sizeof(int), cudaMemcpyDeviceToHost);
+	train_cuda<<<getLayerSize(i) / 256, 256>>>(cuda_input, weight);
+	cudaMemcpy(weights[i], weight, getLayerSize(i) * sizeof(float), cudaMemcpyDeviceToHost);
     }
 
     /* Don't forget to close common file before leaving */
     fclose(common_file);
 
 
-    free(resized_data);
-    free(original_data);
+//    free(resized_data);
+//    free(original_data);
     free(grayscale);
 
     // TODO: free for every malloc
