@@ -68,9 +68,9 @@ int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
 	return 0;
     }
 
-    int max(int a, int b) {
-        return a < b ? b : a;
-    }
+//    int max(int a, int b) {
+//        return a < b ? b : a;
+//    }
 
     int *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
         int j = 0;
@@ -225,7 +225,7 @@ void readInputFrom(char *path) {
 
 	int *image_data = (int*)malloc(3 * x_dim * y_dim * sizeof(int));
     // Read image data and resize it to 64x64px
-    read_ppm_data(file, image_data, &is_asci);
+    read_ppm_data(file, image_data, is_asci);
 	for (int i = 0; i < 3 * x_dim * y_dim; i++) {
 		original_data[i] = image_data[i];	
 }
