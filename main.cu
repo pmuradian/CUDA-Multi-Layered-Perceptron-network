@@ -192,6 +192,10 @@ void train(int **input, int output, int ***weights, int **biases, int layer, int
 //    widths[i][j] = RANDOM_FLOAT;
 //}
 
+__global__ train_cuda(int* input, int* weights) {
+
+}
+
 void readInputFrom(char *path) {
     DIR* FD;
     struct dirent* in_file;
@@ -205,7 +209,7 @@ void readInputFrom(char *path) {
     int img_colors = 0;
     int is_asci = 0;
     int pnm_type = 0;
-    float ***weights;
+    float **weights;
     int **biases;
 
     int isRandom = 1;
@@ -233,7 +237,7 @@ void readInputFrom(char *path) {
     // Initialize weights
 //    createInitialWeights(weights, isRandom);
 
-    weights = (float***)malloc(LAYER_COUNT * sizeof(float *));
+    float *weights[LAYER_COUNT];
 
     for (int k = 0; k < LAYER_COUNT; k++) {
 
@@ -244,27 +248,26 @@ void readInputFrom(char *path) {
 
         int size = getLayerSize(k);
         int previous_layer_size = getLayerSize(k - 1);
-        int **weigths = (float**)malloc(size * sizeof(float *));
+        int *weigth = (float*)malloc(size * sizeof(float));
 
         printf("for layer = %d, previous layer size = %d, current layer size = %d/n", k, previous_layer_size, size);
         fflush( stdout );
 
         for (int i = 0; i < size; i++) {
 
-            weigths[i] = (float*)malloc(previous_layer_size * sizeof(float));
+            //weigths[i] = (float*)malloc(previous_layer_size * sizeof(float));
 
             for (int j = 0; j < previous_layer_size; j++)
 //                 weight for node i in layer k from node j in layer k - 1
-                weigths[i][j] = random ? random_double() : 1;
+                weigth[i * getLayerSize(k - 1) + j] = random ? random_double() : 1;
         }
 
-        weights[k - 1] = weigths;
+        weights[k - 1] = weigth;
         int block_count = getLayerSize(k) / THREADS;
-
-//        dim3 threads(8, 8);
-//        dim3 grids(, DIM / 16);
-//        random_width_generator_kernel<<<block_count, THREADS>>>(weights);
     }
+	int cuda_weigths[LAYER_COUNT];
+
+
 
 
 
@@ -274,7 +277,14 @@ void readInputFrom(char *path) {
 
 
     for (int i = 0; i < LAYER_COUNT; i++) {
-        train(grayscale, output, weights, biases, i, 0);
+	int *weight;
+	cudaMalloc((void**)&weight, getLayerSize(i) * sizeof(int));
+	cudaMemcpy(weight, weigths[i], getLayerSize(i) * sizeof(int), cudaMemcpyHostToDevice);
+	int *cuda_input;
+	cudaMalloc((void**)&cuda_input, 4096 * sizeof(int));
+	cudaMemcpy(cuda_input, grayscale[0], 4096 * sizeof(int), cudaMemcpyHostToDevice);
+	train_cuda(cuda_input, weight);
+	cudaMemcpy(weights[i], weight, getLayerSize(i) * sizeof(int), cudaMemcpyDeviceToHost);
     }
 
     /* Don't forget to close common file before leaving */
