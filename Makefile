@@ -204,9 +204,8 @@ ALL_LDFLAGS += $(addprefix -Xlinker ,$(LDFLAGS))
 ALL_LDFLAGS += $(addprefix -Xlinker ,$(EXTRA_LDFLAGS))
 
 # Common includes and paths for CUDA
-INCLUDES  := -I../../common/inc
-LIBRARIES :=
-
+INCLUDES  := ./ppm/pnmio.h
+LIBRARIES := ./ppm/pnmio.o
 ################################################################################
 
 # Gencode arguments
@@ -247,6 +246,7 @@ else
 endif
 
 main.o: main.cu
+#	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -c ppm/pnmio.c 
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
 main: main.o

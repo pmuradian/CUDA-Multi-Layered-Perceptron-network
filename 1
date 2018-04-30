@@ -5,13 +5,13 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <errno.h>
-//#include "cuda.h"
+#include "cuda.h"
 #include "ppm/pnmio.h"
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "ppm/stb_image_resize.h"
 
-#define DEFAULT_PATH "/Users/azazel/Documents/Projects/MIMUW/CUDA/Training/"
+#define DEFAULT_PATH "~/cuda_assignment/CUDA-Multi-Layer-Perceptron-network/Training/"
 #define DEFAULT_EPSILON 1.0
 #define DEFAULT_RATE 1.0
 #define DEFAULT_EPOCH 1
@@ -65,29 +65,25 @@ int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
         for (size_t i = 0; i < input_len; i++) {
             input[i] = expf(input[i] - offset);
         }
+	return 0;
     }
 
-    int max(int a, int b) {
-        return a < b ? b : a;
-    }
-
-    int *toGrayScale(int *input, int x_dim, int y_dim) {
+    int *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
         int j = 0;
-        int *grayscale = malloc(IMAGE_DIMENTIONS * sizeof(int));
+        int *grayscale = (int*)malloc(IMAGE_DIMENTIONS * sizeof(int));
 
         for (int i = 0; i < 3 * IMAGE_DIMENTIONS; i += 3) {
             grayscale[j++] = (0.3 * input[i]) + (0.59 * input[i + 1]) + (0.11 * input[i + 2]);
         }
-
         return grayscale;
     }
 
-double random_double()
-{
+double random_double() {
     return (double)rand() / (double)RAND_MAX;
 }
 
 // use cuda
+/*
 void createInitialWeights(int ***w, int random) {
 
     w = malloc(LAYER_COUNT * sizeof(int*));
@@ -118,13 +114,16 @@ void createInitialWeights(int ***w, int random) {
         w[k - 1] = weigths;
     }
 }
+*/
+
+int getLayerSize(int layer) { return layers[layer]; }
 
 int **createInitialBiases() {
-    int **biases = malloc(LAYER_COUNT * sizeof(int*));
+    int **biases = (int**)malloc(LAYER_COUNT * sizeof(int*));
 
     for (int i = 0; i < LAYER_COUNT; i++) {
         int size = getLayerSize(i);
-        biases[i] = malloc(size * sizeof(int));
+        biases[i] = (int*)malloc(size * sizeof(int));
 
         for (int j = 0; j < size; j++)
             // bias for nod j in layer i
@@ -133,12 +132,9 @@ int **createInitialBiases() {
 
     return biases;
 }
-int getLayerSize(int layer) {
-    return layers[layer];
-}
 
-void train(int **input, int output, int ***weights, int **biases, int layer, int round) {
-    int *activation_outputs = malloc(INPUT_LAYER_SIZE * sizeof(int));
+/* void train(int **input, int output, int ***weights, int **biases, int layer, int round) {
+    int *activation_outputs = (int*)malloc(INPUT_LAYER_SIZE * sizeof(int));
     int size = getLayerSize(layer);
 
     // For input layer
@@ -151,7 +147,7 @@ void train(int **input, int output, int ***weights, int **biases, int layer, int
 
     int sum = 0;
     int previous_layer_size = getLayerSize(layer - 1);
-    int *results = malloc(size * sizeof(int));
+    int *results = (int*)malloc(size * sizeof(int));
 
     printf("previous layer size = %d, current layer size = %d", previous_layer_size, size);
     fflush( stdout );
@@ -165,11 +161,11 @@ void train(int **input, int output, int ***weights, int **biases, int layer, int
             input[layer][i] = sum;
         }
 
-        results = softmax(input, size);
+        softmax(input, size);
         return;
     }
 
-    weights[layer - 1];
+//    weights[layer - 1];
 
     // For hidden layers
     for (int i = 0; i < size; i++) {
@@ -181,7 +177,7 @@ void train(int **input, int output, int ***weights, int **biases, int layer, int
 
         results[i] = reLU(sum, 0);
     }
-}
+}*/
 
 //__global__ random_width_generator_kernel(float **widths) {
 //    uint i = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -190,48 +186,57 @@ void train(int **input, int output, int ***weights, int **biases, int layer, int
 //    widths[i][j] = RANDOM_FLOAT;
 //}
 
+__global__ void train_cuda(int* input, float* weights) {
+
+}
+
 void readInputFrom(char *path) {
     DIR* FD;
     struct dirent* in_file;
     FILE    *common_file;
     FILE    *entry_file;
-    char    buffer[BUFSIZ];
-
-    FILE *file = fopen("/Users/azazel/Documents/Projects/MIMUW/CUDA/Training/00000/01153_00000.ppm", "rb");
+    char    buffer[14];
+	printf("Nikol varchapet");
+    FILE *file = fopen("~/cuda_assignment/CUDA-Multi-Layer-Perceptron-network/Training/00000/01153_00000.ppm", "rb");
     int x_dim;
     int y_dim;
     int img_colors = 0;
     int is_asci = 0;
     int pnm_type = 0;
-    float ***weights;
     int **biases;
 
     int isRandom = 1;
 
-    // Read contents of ppm file header
-    pnm_type = get_pnm_type(file);
-    rewind(file);
-    read_ppm_header(file, &x_dim, &y_dim, &img_colors, &is_asci);
-
-    int *original_data = malloc(3 * x_dim * y_dim * sizeof(int));
-    int *resized_data = malloc(3 * 64 * 64 * sizeof(int));
-    int *grayscale[LAYER_COUNT];
-    int output = 0;
-
+    // Read contentis of ppm file header
+printf("Opening file to read");
+    //pnm_type = get_pnm_type(file);
+    //rewind(file);
+    //read_ppm_header(file, &x_dim, &y_dim, &img_colors, &is_asci);
+printf("Success");
+//    unsigned char *original_data = (unsigned char*)malloc(3 * x_dim * y_dim * sizeof(char));
+//    unsigned char *resized_data = (unsigned char*)malloc(3 * 64 * 64 * sizeof(char));
+//    int *grayscale[LAYER_COUNT];
+//    int output = 0;
+//printf("memory created");
+/*
+	int *image_data = (int*)malloc(3 * x_dim * y_dim * sizeof(int));
     // Read image data and resize it to 64x64px
-    read_ppm_data(file, original_data, &is_asci);
-    stbir_resize_uint8(original_data, x_dim, y_dim, 0, resized_data, 64, 64, 0, 3);
+    	read_ppm_data(file, image_data, is_asci);
+	for (int i = 0; i < 3 * x_dim * y_dim; i++) {
+		original_data[i] = image_data[i];	
+	}
+    	stbir_resize_uint8(original_data, x_dim, y_dim, 0, resized_data, 64, 64, 0, 3);
 
     // Convert to grayscale
     grayscale[0] = toGrayScale(resized_data, x_dim, y_dim);
     for (int i = 1; i < LAYER_COUNT; i++) {
-        grayscale[i] = malloc(getLayerSize(i) * sizeof(int));
+        grayscale[i] = (int*)malloc(getLayerSize(i) * sizeof(int));
     }
 
     // Initialize weights
 //    createInitialWeights(weights, isRandom);
 
-    weights = malloc(LAYER_COUNT * sizeof(float *));
+    float *weights[LAYER_COUNT];
 
     for (int k = 0; k < LAYER_COUNT; k++) {
 
@@ -242,27 +247,26 @@ void readInputFrom(char *path) {
 
         int size = getLayerSize(k);
         int previous_layer_size = getLayerSize(k - 1);
-        int **weigths = malloc(size * sizeof(float *));
+        float *weigth = (float*)malloc(size * sizeof(float));
 
         printf("for layer = %d, previous layer size = %d, current layer size = %d/n", k, previous_layer_size, size);
         fflush( stdout );
 
         for (int i = 0; i < size; i++) {
 
-            weigths[i] = malloc(previous_layer_size * sizeof(float));
+            //weigths[i] = (float*)malloc(previous_layer_size * sizeof(float));
 
             for (int j = 0; j < previous_layer_size; j++)
 //                 weight for node i in layer k from node j in layer k - 1
-                weigths[i][j] = random ? random_double() : 1;
+                weigth[i * getLayerSize(k - 1) + j] = random ? random_double() : 1;
         }
 
-        weights[k - 1] = weigths;
+        weights[k - 1] = weigth;
         int block_count = getLayerSize(k) / THREADS;
-
-//        dim3 threads(8, 8);
-//        dim3 grids(, DIM / 16);
-//        random_width_generator_kernel<<<block_count, THREADS>>>(weights);
     }
+	int cuda_weigths[LAYER_COUNT];
+
+
 
 
 
@@ -270,22 +274,30 @@ void readInputFrom(char *path) {
 
     fclose(file);
 
-
     for (int i = 0; i < LAYER_COUNT; i++) {
-        train(grayscale, output, weights, biases, i, 0);
+	float *weight;
+	cudaMalloc((void**)&weight, getLayerSize(i) * sizeof(float));
+	cudaMemcpy(weight, weights[i], getLayerSize(i) * sizeof(float), cudaMemcpyHostToDevice);
+	int *cuda_input;
+	cudaMalloc((void**)&cuda_input, 4096 * sizeof(int));
+	cudaMemcpy(cuda_input, grayscale[0], 4096 * sizeof(int), cudaMemcpyHostToDevice);
+	train_cuda<<<getLayerSize(i) / 256, 256>>>(cuda_input, weight);
+	cudaMemcpy(weights[i], weight, getLayerSize(i) * sizeof(float), cudaMemcpyDeviceToHost);
     }
 
     /* Don't forget to close common file before leaving */
-    fclose(common_file);
+  //  fclose(common_file);
 
 
-    free(resized_data);
-    free(original_data);
-    free(grayscale);
+//    free(resized_data);
+//    free(original_data);
+//	for (int i = 0; i < LAYER_COUNT; i++) {
+//	    free(grayscale[i]);
+//	}
 
     // TODO: free for every malloc
-    free(weights);
-    free(biases);
+    //free(weights);
+    //free(biases);
 
 
     /* Openiing common file for writing */

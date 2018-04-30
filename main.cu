@@ -5,13 +5,13 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <errno.h>
-//#include "cuda.h"
+#include "cuda.h"
 #include "ppm/pnmio.h"
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "ppm/stb_image_resize.h"
 
-#define DEFAULT_PATH "/Users/azazel/Documents/Projects/MIMUW/CUDA/Training/"
+#define DEFAULT_PATH "./Training/"
 #define DEFAULT_EPSILON 1.0
 #define DEFAULT_RATE 1.0
 #define DEFAULT_EPOCH 1
@@ -68,10 +68,6 @@ int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
 	return 0;
     }
 
-//    int max(int a, int b) {
-//        return a < b ? b : a;
-//    }
-
     int *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
         int j = 0;
         int *grayscale = (int*)malloc(IMAGE_DIMENTIONS * sizeof(int));
@@ -79,12 +75,10 @@ int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
         for (int i = 0; i < 3 * IMAGE_DIMENTIONS; i += 3) {
             grayscale[j++] = (0.3 * input[i]) + (0.59 * input[i + 1]) + (0.11 * input[i + 2]);
         }
-
         return grayscale;
     }
 
-double random_double()
-{
+double random_double() {
     return (double)rand() / (double)RAND_MAX;
 }
 
@@ -201,9 +195,9 @@ void readInputFrom(char *path) {
     struct dirent* in_file;
     FILE    *common_file;
     FILE    *entry_file;
-    char    buffer[BUFSIZ];
-
-    FILE *file = fopen("/Users/azazel/Documents/Projects/MIMUW/CUDA/Training/00000/01153_00000.ppm", "rb");
+    char    buffer[14];
+	
+    FILE *file = fopen("./Training/00000/01153_00000.ppm", "rb");
     int x_dim;
     int y_dim;
     int img_colors = 0;
@@ -212,26 +206,34 @@ void readInputFrom(char *path) {
     int **biases;
 
     int isRandom = 1;
-
-    // Read contents of ppm file header
+if (file == NULL) {
+	printf("file is null \n");
+} else {
+	printf("file is not null  \n");
+}
+    // Read contentis of ppm file header
+	printf("Opening file to read \n");
     pnm_type = get_pnm_type(file);
     rewind(file);
     read_ppm_header(file, &x_dim, &y_dim, &img_colors, &is_asci);
-
+	printf("Success\n");
     unsigned char *original_data = (unsigned char*)malloc(3 * x_dim * y_dim * sizeof(char));
     unsigned char *resized_data = (unsigned char*)malloc(3 * 64 * 64 * sizeof(char));
     int *grayscale[LAYER_COUNT];
     int output = 0;
+	printf("memory created\n");
 
 	int *image_data = (int*)malloc(3 * x_dim * y_dim * sizeof(int));
     // Read image data and resize it to 64x64px
-    read_ppm_data(file, image_data, is_asci);
+    	read_ppm_data(file, image_data, is_asci);
 	for (int i = 0; i < 3 * x_dim * y_dim; i++) {
 		original_data[i] = image_data[i];	
-}
-    stbir_resize_uint8(original_data, x_dim, y_dim, 0, resized_data, 64, 64, 0, 3);
+	}
+	printf("image data read");
+    	stbir_resize_uint8(original_data, x_dim, y_dim, 0, resized_data, 64, 64, 0, 3);
 
     // Convert to grayscale
+	printf("converted to grayscale\n");
     grayscale[0] = toGrayScale(resized_data, x_dim, y_dim);
     for (int i = 1; i < LAYER_COUNT; i++) {
         grayscale[i] = (int*)malloc(getLayerSize(i) * sizeof(int));
@@ -251,7 +253,7 @@ void readInputFrom(char *path) {
 
         int size = getLayerSize(k);
         int previous_layer_size = getLayerSize(k - 1);
-        float *weigth = (float*)malloc(size * sizeof(float));
+        float *weigth = (float*)malloc(size * previous_layer_size * sizeof(float));
 
         printf("for layer = %d, previous layer size = %d, current layer size = %d/n", k, previous_layer_size, size);
         fflush( stdout );
@@ -278,7 +280,6 @@ void readInputFrom(char *path) {
 
     fclose(file);
 
-
     for (int i = 0; i < LAYER_COUNT; i++) {
 	float *weight;
 	cudaMalloc((void**)&weight, getLayerSize(i) * sizeof(float));
@@ -291,16 +292,18 @@ void readInputFrom(char *path) {
     }
 
     /* Don't forget to close common file before leaving */
-    fclose(common_file);
+  //  fclose(common_file);
 
 
 //    free(resized_data);
 //    free(original_data);
-    free(grayscale);
+//	for (int i = 0; i < LAYER_COUNT; i++) {
+//	    free(grayscale[i]);
+//	}
 
     // TODO: free for every malloc
-    free(weights);
-    free(biases);
+    //free(weights);
+    //free(biases);
 
 
     /* Openiing common file for writing */
