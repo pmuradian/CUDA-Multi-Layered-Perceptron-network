@@ -179,24 +179,18 @@ int **createInitialBiases() {
     }
 }*/
 
-//__global__ random_width_generator_kernel(float **widths) {
-//    uint i = (blockIdx.x * blockDim.x) + threadIdx.x;
-//    uint j = (blockIdx.y * blockDim.y) + threadIdx.y;
-//
-//    widths[i][j] = RANDOM_FLOAT;
-//}
-
 __global__ void train_cuda(float *input, float *output, float *weights, int current_layer_size, int prev_layer_size) {
-	//printf("blockID = %d\n", blockIdx.x * blockDim.x + threadIdx.x);
+	
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	float sum = 0;
 	__shared__ float s[10000];
 	//for (int i = 0; i < current_layer_size; i++) {
-	for (int j = 0; j < prev_layer_size) {
+	for (int j = 0; j < prev_layer_size; j++) {
+		printf("weight = %f\n", weights[j]);
 		sum += weights[index * prev_layer_size + j] * input[index];
 	}
 	s[index] = sum;
-	printf("Sum for index = %d, value = %f\n", index, sum);
+	//printf("Sum for index = %d, value = %f\n", index, sum);
 	//}
 }
 
@@ -263,7 +257,7 @@ if (file == NULL) {
 
         int size = getLayerSize(k);
         int previous_layer_size = getLayerSize(k - 1);
-        float *weigth = (float*)malloc(size * previous_layer_size * sizeof(float));
+        float *weight = (float*)malloc(size * previous_layer_size * sizeof(float));
 
         //printf("for layer = %d, previous layer size = %d, current layer size = %d/n", k, previous_layer_size, size);
         //fflush( stdout );
@@ -272,32 +266,33 @@ if (file == NULL) {
 
             //weigths[i] = (float*)malloc(previous_layer_size * sizeof(float));
 
-            for (int j = 0; j < previous_layer_size; j++)
+            for (int j = 0; j < previous_layer_size; j++) {
 //                 weight for node i in layer k from node j in layer k - 1
-                weigth[i * getLayerSize(k - 1) + j] = random ? random_double() : 1;
+                weight[i * getLayerSize(k - 1) + j] = random ? random_double() : 1;
+	//	printf("%f ", weight[i * getLayerSize(k - 1) + j]);}
         }
 
-        weights[k - 1] = weigth;
+        weights[k - 1] = weight;
         int block_count = getLayerSize(k) / THREADS;
     }
-	int cuda_weigths[LAYER_COUNT];
+	int cuda_weights[LAYER_COUNT];
 
     biases = createInitialBiases();
 
     fclose(file);
 
-    for (int i = 1; i < 2; i++) {
+    for (int i = 1; i < LAYER_COUNT; i++) {
 	float *weight;
 	float *output;
 	cudaMalloc((void**)&output, getLayerSize(i) * sizeof(float));
 	cudaMalloc((void**)&weight, getLayerSize(i) * getLayerSize(i - 1) * sizeof(float));
-	cudaMemcpy(weight, weights[i - 1], getLayerSize(i) * sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(weight, weights[i - 1], getLayerSize(i - 1) * getLayerSize(i) * sizeof(float), cudaMemcpyHostToDevice);
 	float *cuda_input;
 	float *cuda_output;
 	cudaMalloc((void**)&cuda_input, getLayerSize(i - 1) * sizeof(float));
 	cudaMalloc((void**)&cuda_output, getLayerSize(i) * sizeof(float));
 	cudaMemcpy(cuda_input, (float *)grayscale[i - 1], getLayerSize(i - 1) * sizeof(float), cudaMemcpyHostToDevice);
-	train_cuda<<<getLayerSize(i) / 256, 256>>>(cuda_input, cuda_output, weight, getLayerSize(i), getLayerSize(i - 1));
+	//train_cuda<<<getLayerSize(i) / 256, 256>>>(cuda_input, cuda_output, weight, getLayerSize(i), getLayerSize(i - 1));
 	//cudaMemcpy(weights[i], weight, getLayerSize(i) * sizeof(float), cudaMemcpyDeviceToHost);
     }
 
