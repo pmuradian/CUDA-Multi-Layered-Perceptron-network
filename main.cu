@@ -68,9 +68,9 @@ int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
 	return 0;
     }
 
-    int *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
+    float *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
         int j = 0;
-        int *grayscale = (int*)malloc(IMAGE_DIMENTIONS * sizeof(int));
+        float *grayscale = (float*)malloc(IMAGE_DIMENTIONS * sizeof(float));
 
         for (int i = 0; i < 3 * IMAGE_DIMENTIONS; i += 3) {
             grayscale[j++] = (0.3 * input[i]) + (0.59 * input[i + 1]) + (0.11 * input[i + 2]);
@@ -186,8 +186,18 @@ int **createInitialBiases() {
 //    widths[i][j] = RANDOM_FLOAT;
 //}
 
-__global__ void train_cuda(int* input, float* weights) {
-
+__global__ void train_cuda(float *input, float *output, float *weights, int current_layer_size, int prev_layer_size) {
+	//printf("blockID = %d\n", blockIdx.x * blockDim.x + threadIdx.x);
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	float sum = 0;
+	__shared__ float s[10000];
+	//for (int i = 0; i < current_layer_size; i++) {
+	for (int j = 0; j < prev_layer_size) {
+		sum += weights[index * prev_layer_size + j] * input[index];
+	}
+	s[index] = sum;
+	printf("Sum for index = %d, value = %f\n", index, sum);
+	//}
 }
 
 void readInputFrom(char *path) {
@@ -219,7 +229,7 @@ if (file == NULL) {
 	printf("Success\n");
     unsigned char *original_data = (unsigned char*)malloc(3 * x_dim * y_dim * sizeof(char));
     unsigned char *resized_data = (unsigned char*)malloc(3 * 64 * 64 * sizeof(char));
-    int *grayscale[LAYER_COUNT];
+    float *grayscale[LAYER_COUNT];
     int output = 0;
 	printf("memory created\n");
 
@@ -236,7 +246,7 @@ if (file == NULL) {
 	printf("converted to grayscale\n");
     grayscale[0] = toGrayScale(resized_data, x_dim, y_dim);
     for (int i = 1; i < LAYER_COUNT; i++) {
-        grayscale[i] = (int*)malloc(getLayerSize(i) * sizeof(int));
+        grayscale[i] = (float *)malloc(getLayerSize(i) * sizeof(float));
     }
 
     // Initialize weights
@@ -255,8 +265,8 @@ if (file == NULL) {
         int previous_layer_size = getLayerSize(k - 1);
         float *weigth = (float*)malloc(size * previous_layer_size * sizeof(float));
 
-        printf("for layer = %d, previous layer size = %d, current layer size = %d/n", k, previous_layer_size, size);
-        fflush( stdout );
+        //printf("for layer = %d, previous layer size = %d, current layer size = %d/n", k, previous_layer_size, size);
+        //fflush( stdout );
 
         for (int i = 0; i < size; i++) {
 
@@ -272,23 +282,23 @@ if (file == NULL) {
     }
 	int cuda_weigths[LAYER_COUNT];
 
-
-
-
-
     biases = createInitialBiases();
 
     fclose(file);
 
-    for (int i = 0; i < LAYER_COUNT; i++) {
+    for (int i = 1; i < 2; i++) {
 	float *weight;
-	cudaMalloc((void**)&weight, getLayerSize(i) * sizeof(float));
-	cudaMemcpy(weight, weights[i], getLayerSize(i) * sizeof(float), cudaMemcpyHostToDevice);
-	int *cuda_input;
-	cudaMalloc((void**)&cuda_input, 4096 * sizeof(int));
-	cudaMemcpy(cuda_input, grayscale[0], 4096 * sizeof(int), cudaMemcpyHostToDevice);
-	train_cuda<<<getLayerSize(i) / 256, 256>>>(cuda_input, weight);
-	cudaMemcpy(weights[i], weight, getLayerSize(i) * sizeof(float), cudaMemcpyDeviceToHost);
+	float *output;
+	cudaMalloc((void**)&output, getLayerSize(i) * sizeof(float));
+	cudaMalloc((void**)&weight, getLayerSize(i) * getLayerSize(i - 1) * sizeof(float));
+	cudaMemcpy(weight, weights[i - 1], getLayerSize(i) * sizeof(float), cudaMemcpyHostToDevice);
+	float *cuda_input;
+	float *cuda_output;
+	cudaMalloc((void**)&cuda_input, getLayerSize(i - 1) * sizeof(float));
+	cudaMalloc((void**)&cuda_output, getLayerSize(i) * sizeof(float));
+	cudaMemcpy(cuda_input, (float *)grayscale[i - 1], getLayerSize(i - 1) * sizeof(float), cudaMemcpyHostToDevice);
+	train_cuda<<<getLayerSize(i) / 256, 256>>>(cuda_input, cuda_output, weight, getLayerSize(i), getLayerSize(i - 1));
+	//cudaMemcpy(weights[i], weight, getLayerSize(i) * sizeof(float), cudaMemcpyDeviceToHost);
     }
 
     /* Don't forget to close common file before leaving */
