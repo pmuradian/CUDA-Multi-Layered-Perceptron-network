@@ -24,7 +24,7 @@
 #define FOURTH_LAYER_SIZE 1024
 #define OUTPUT_LAYER_SIZE 62
 #define IMAGE_DIMENTIONS 64*64
-#define RANDOM_FLOAT (float)rand() / (float)RAND_MAX
+#define RANDOM_FLOAT (double)rand() / (double)RAND_MAX
 
 // CUDA defines
 #define DIM 1024
@@ -42,38 +42,38 @@ int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
                             OUTPUT_LAYER_SIZE };
 
 
-__device__ float reLU(float x, int derivative) {
+__device__ double reLU(double x, int derivative) {
     if (x > 0) {
     	return x;
     }
     return 0.0;
 }
 
-__device__ int softmax(float *input, size_t input_len) {
+__device__ int softmax(double *input, size_t input_len) {
     assert(input);
 
-    float m = -INFINITY;
+    double m = -INFINITY;
     for (size_t i = 0; i < input_len; i++) {
         if (input[i] > m) {
             m = input[i];
         }
     }
 
-    float sum = 0.0;
+    double sum = 0.0;
     for (size_t i = 0; i < input_len; i++) {
         sum += expf(input[i] - m);
     }
 
-    float offset = m + logf(sum);
+    double offset = m + logf(sum);
     for (size_t i = 0; i < input_len; i++) {
         input[i] = expf(input[i] - offset);
     }
     return 0;
 }
 
-float *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
+double *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
     int j = 0;
-    float *grayscale = (float*)malloc(IMAGE_DIMENTIONS * sizeof(float));
+    double *grayscale = (double*)malloc(IMAGE_DIMENTIONS * sizeof(double));
 
     for (int i = 0; i < 3 * IMAGE_DIMENTIONS; i += 3) {
         grayscale[j++] = (0.3 * input[i]) + (0.59 * input[i + 1]) + (0.11 * input[i + 2]);
@@ -81,8 +81,8 @@ float *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
     return grayscale;
 }
 
-float random_double() {
-    return (float)rand() / (float)RAND_MAX;
+double random_double() {
+    return (double)rand() / (double)RAND_MAX;
 }
 
 int getLayerSize(int layer) { return layers[layer]; }
@@ -102,10 +102,10 @@ int **createInitialBiases() {
     return biases;
 }
 
-__global__ void train_cuda(float *input, float *output, float *weights, int current_layer_size, int prev_layer_size) {
+__global__ void train_cuda(double *input, double *output, double *weights, int current_layer_size, int prev_layer_size) {
 
     int index = blockIdx.x * blockDim.x + threadIdx.x;
-    float sum = 0;
+    double sum = 0;
 
     if (current_layer_size == 62) {
         index = threadIdx.x;
@@ -157,7 +157,7 @@ void readInputFrom(char *path) {
     printf("Success\n");
     unsigned char *original_data = (unsigned char*)malloc(3 * x_dim * y_dim * sizeof(char));
     unsigned char *resized_data = (unsigned char*)malloc(3 * 64 * 64 * sizeof(char));
-    float *grayscale[LAYER_COUNT];
+    double *grayscale[LAYER_COUNT];
     int output = 0;
     printf("memory created\n");
 
@@ -175,16 +175,16 @@ void readInputFrom(char *path) {
     grayscale[0] = toGrayScale(resized_data, x_dim, y_dim);
 
     for (int i = 1; i < LAYER_COUNT; i++) {
-        grayscale[i] = (float *)malloc(getLayerSize(i) * sizeof(float));
+        grayscale[i] = (double *)malloc(getLayerSize(i) * sizeof(double));
     }
 
     // Initialize weights
-    float *weights[LAYER_COUNT];
+    double *weights[LAYER_COUNT];
 
     for (int k = 1; k < LAYER_COUNT; k++) {
         int size = getLayerSize(k);
         int previous_layer_size = getLayerSize(k - 1);
-        float *weight = (float*)malloc(size * previous_layer_size * sizeof(float));
+        double *weight = (double*)malloc(size * previous_layer_size * sizeof(double));
 
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < previous_layer_size; j++) {
@@ -202,17 +202,17 @@ void readInputFrom(char *path) {
 
     for (int i = 1; i < LAYER_COUNT - 2; i++) {
         printf("current layer %d\n", i);
-	float *weight;
-        //float *output;
+	double *weight;
+        //double *output;
         int curr_layer_size = getLayerSize(i);
         int prev_layer_size = getLayerSize(i - 1);
-        int curr_buff_size = curr_layer_size * sizeof(float);
-        int prev_buff_size = prev_layer_size * sizeof(float);
+        int curr_buff_size = curr_layer_size * sizeof(double);
+        int prev_buff_size = prev_layer_size * sizeof(double);
         //cudaMalloc((void**)&output, curr_buff_size);
-        cudaMalloc((void**)&weight, curr_layer_size * prev_layer_size * sizeof(float));
-        cudaMemcpy(weight, weights[i - 1], curr_layer_size * prev_layer_size * sizeof(float), cudaMemcpyHostToDevice);
-        float *cuda_input;
-        float *cuda_output;
+        cudaMalloc((void**)&weight, curr_layer_size * prev_layer_size * sizeof(double));
+        cudaMemcpy(weight, weights[i - 1], curr_layer_size * prev_layer_size * sizeof(double), cudaMemcpyHostToDevice);
+        double *cuda_input;
+        double *cuda_output;
         cudaMalloc((void**)&cuda_input, prev_buff_size);
         cudaMalloc((void**)&cuda_output, curr_buff_size);
         cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice);
