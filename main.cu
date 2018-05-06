@@ -42,41 +42,41 @@ int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
                             OUTPUT_LAYER_SIZE };
 
 
-    __device__ int reLU(int x, int derivative) {
-        return derivative ? 1 : max(0, x);
+__device__ int reLU(int x, int derivative) {
+    return derivative ? 1 : max(0, x);
+}
+
+__device__ int softmax(float *input, size_t input_len) {
+    assert(input);
+
+    float m = -INFINITY;
+    for (size_t i = 0; i < input_len; i++) {
+        if (input[i] > m) {
+            m = input[i];
+        }
     }
 
-    __device__ int softmax(float *input, size_t input_len) {
-        assert(input);
-
-        float m = -INFINITY;
-        for (size_t i = 0; i < input_len; i++) {
-            if (input[i] > m) {
-                m = input[i];
-            }
-        }
-
-        float sum = 0.0;
-        for (size_t i = 0; i < input_len; i++) {
-            sum += expf(input[i] - m);
-        }
-
-        float offset = m + logf(sum);
-        for (size_t i = 0; i < input_len; i++) {
-            input[i] = expf(input[i] - offset);
-        }
-	return 0;
+    float sum = 0.0;
+    for (size_t i = 0; i < input_len; i++) {
+        sum += expf(input[i] - m);
     }
 
-    float *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
-        int j = 0;
-        float *grayscale = (float*)malloc(IMAGE_DIMENTIONS * sizeof(float));
-
-        for (int i = 0; i < 3 * IMAGE_DIMENTIONS; i += 3) {
-            grayscale[j++] = (0.3 * input[i]) + (0.59 * input[i + 1]) + (0.11 * input[i + 2]);
-        }
-        return grayscale;
+    float offset = m + logf(sum);
+    for (size_t i = 0; i < input_len; i++) {
+        input[i] = expf(input[i] - offset);
     }
+    return 0;
+}
+
+float *toGrayScale(const unsigned char *input, int x_dim, int y_dim) {
+    int j = 0;
+    float *grayscale = (float*)malloc(IMAGE_DIMENTIONS * sizeof(float));
+
+    for (int i = 0; i < 3 * IMAGE_DIMENTIONS; i += 3) {
+        grayscale[j++] = (0.3 * input[i]) + (0.59 * input[i + 1]) + (0.11 * input[i + 2]);
+    }
+    return grayscale;
+}
 
 double random_double() {
     return (double)rand() / (double)RAND_MAX;
@@ -100,30 +100,30 @@ int **createInitialBiases() {
 }
 
 __global__ void train_cuda(float *input, float *output, float *weights, int current_layer_size, int prev_layer_size) {
-	
-	int index = blockIdx.x * blockDim.x + threadIdx.x;
-	float sum = 0;
 
-	if (current_layer_size == 62) {
-		index = threadIdx.x;
-	}
-	for (int j = 0; j < prev_layer_size; j++) { 
-		sum += weights[index * prev_layer_size + j] * input[j];
-		if (current_layer_size == 62){
-			//printf("input size = %d\n", sizeof(input));
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    float sum = 0;
+
+    if (current_layer_size == 62) {
+        index = threadIdx.x;
+    }
+    for (int j = 0; j < prev_layer_size; j++) {
+        sum += weights[index * prev_layer_size + j] * input[j];
+        if (current_layer_size == 62){
+            //printf("input size = %d\n", sizeof(input));
 //			printf("mul = %f\n", input[j]);
-		}
-	}
-	
-	__syncthreads();
-	if (current_layer_size == 62) {
-	//	printf("sum = %f\n", sum);
-		output[index] = sum;
-		//__syncthreads();
-		//softmax(output, current_layer_size);
-	} else {
-		output[index] = reLU(sum, 0);
-	}
+        }
+    }
+
+    __syncthreads();
+    if (current_layer_size == 62) {
+        //	printf("sum = %f\n", sum);
+        output[index] = sum;
+        //__syncthreads();
+        //softmax(output, current_layer_size);
+    } else {
+        output[index] = reLU(sum, 0);
+    }
 }
 
 void readInputFrom(char *path) {
@@ -132,7 +132,7 @@ void readInputFrom(char *path) {
     FILE    *common_file;
     FILE    *entry_file;
     char    buffer[14];
-	
+
     FILE *file = fopen("./Training/00000/01153_00000.ppm", "rb");
     int x_dim;
     int y_dim;
@@ -142,44 +142,41 @@ void readInputFrom(char *path) {
     int **biases;
 
     int isRandom = 1;
-if (file == NULL) {
-	printf("file is null \n");
-} else {
-	printf("file is not null  \n");
-}
+    if (file == NULL) {
+        printf("file is null \n");
+    } else {
+        printf("file is not null  \n");
+    }
     // Read contentis of ppm file header
-	printf("Opening file to read \n");
+    printf("Opening file to read \n");
     pnm_type = get_pnm_type(file);
     rewind(file);
     read_ppm_header(file, &x_dim, &y_dim, &img_colors, &is_asci);
-	printf("Success\n");
+    printf("Success\n");
     unsigned char *original_data = (unsigned char*)malloc(3 * x_dim * y_dim * sizeof(char));
     unsigned char *resized_data = (unsigned char*)malloc(3 * 64 * 64 * sizeof(char));
     float *grayscale[LAYER_COUNT];
     int output = 0;
-	printf("memory created\n");
+    printf("memory created\n");
 
-	int *image_data = (int*)malloc(3 * x_dim * y_dim * sizeof(int));
+    int *image_data = (int*)malloc(3 * x_dim * y_dim * sizeof(int));
     // Read image data and resize it to 64x64px
-    	read_ppm_data(file, image_data, is_asci);
-	for (int i = 0; i < 3 * x_dim * y_dim; i++) {
-		original_data[i] = image_data[i];	
-	}
-	printf("image data read");
-    	stbir_resize_uint8(original_data, x_dim, y_dim, 0, resized_data, 64, 64, 0, 3);
+    read_ppm_data(file, image_data, is_asci);
+    for (int i = 0; i < 3 * x_dim * y_dim; i++) {
+        original_data[i] = image_data[i];
+    }
+    printf("image data read");
+    stbir_resize_uint8(original_data, x_dim, y_dim, 0, resized_data, 64, 64, 0, 3);
 
     // Convert to grayscale
-	printf("converted to grayscale\n");
+    printf("converted to grayscale\n");
     grayscale[0] = toGrayScale(resized_data, x_dim, y_dim);
 
-//printf("input 0 = %f", grayscale[0][4]);
     for (int i = 1; i < LAYER_COUNT; i++) {
         grayscale[i] = (float *)malloc(getLayerSize(i) * sizeof(float));
     }
 
     // Initialize weights
-//    createInitialWeights(weights, isRandom);
-
     float *weights[LAYER_COUNT];
 
     for (int k = 0; k < LAYER_COUNT; k++) {
@@ -193,19 +190,12 @@ if (file == NULL) {
         int previous_layer_size = getLayerSize(k - 1);
         float *weight = (float*)malloc(size * previous_layer_size * sizeof(float));
 
-        //printf("for layer = %d, previous layer size = %d, current layer size = %d/n", k, previous_layer_size, size);
-        //fflush( stdout );
-
         for (int i = 0; i < size; i++) {
-
-            //weigths[i] = (float*)malloc(previous_layer_size * sizeof(float));
-
             for (int j = 0; j < previous_layer_size; j++) {
 //                 weight for node i in layer k from node j in layer k - 1
-                	weight[i * getLayerSize(k - 1) + j] = random ? random_double() : 1;
-	//	printf("%f ", weight[i * getLayerSize(k - 1) + j]);}
-        	}
-	}
+                weight[i * getLayerSize(k - 1) + j] = random ? random_double() : 1;
+            }
+        }
         weights[k - 1] = weight;
         int block_count = getLayerSize(k) / THREADS;
     }
@@ -216,44 +206,40 @@ if (file == NULL) {
     fclose(file);
 
     for (int i = 1; i < LAYER_COUNT; i++) {
-	float *weight;
-	float *output;
-	int curr_layer_size = getLayerSize(i);
-	int prev_layer_size = getLayerSize(i - 1);
-	int curr_buff_size = curr_layer_size * sizeof(float);
-	int prev_buff_size = prev_layer_size * sizeof(float);
-	cudaMalloc((void**)&output, curr_buff_size);
-	cudaMalloc((void**)&weight, curr_layer_size * prev_layer_size * sizeof(float));
-	cudaMemcpy(weight, weights[i - 1], curr_layer_size * prev_layer_size * sizeof(float), cudaMemcpyHostToDevice);
-	float *cuda_input;
-	float *cuda_output;
-	cudaMalloc((void**)&cuda_input, prev_buff_size);
-	cudaMalloc((void**)&cuda_output, curr_buff_size);
-	cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice);
-	printf("size = %d\n", curr_layer_size);
-	for (int j = 0; j < 100; j++) {
-		printf("input = %f\n", grayscale[i - 1][j]);
-	}
-	
-	if (i == LAYER_COUNT - 1) {
-		train_cuda<<<1, 62>>>(cuda_input, cuda_output, weight, curr_layer_size, prev_layer_size);
-	} else {
-		train_cuda<<<curr_layer_size / 256, 256>>>(cuda_input, cuda_output, weight, curr_layer_size, prev_layer_size);
-	}
-	cudaMemcpy(grayscale[i], cuda_output, curr_layer_size, cudaMemcpyDeviceToHost);
-	
-	//for (int j = 0; j < 10; j++)
-		//printf("output value = %f\n", grayscale[i][j]);
-	
-	//cudaMemcpy(weights[i], weight, prev_buff_size, cudaMemcpyDeviceToHost);
-	cudaFree(cuda_input);	
-	cudaFree(cuda_output);
-	cudaFree(weight);	
+        float *weight;
+        float *output;
+        int curr_layer_size = getLayerSize(i);
+        int prev_layer_size = getLayerSize(i - 1);
+        int curr_buff_size = curr_layer_size * sizeof(float);
+        int prev_buff_size = prev_layer_size * sizeof(float);
+        cudaMalloc((void**)&output, curr_buff_size);
+        cudaMalloc((void**)&weight, curr_layer_size * prev_layer_size * sizeof(float));
+        cudaMemcpy(weight, weights[i - 1], curr_layer_size * prev_layer_size * sizeof(float), cudaMemcpyHostToDevice);
+        float *cuda_input;
+        float *cuda_output;
+        cudaMalloc((void**)&cuda_input, prev_buff_size);
+        cudaMalloc((void**)&cuda_output, curr_buff_size);
+        cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice);
+        printf("size = %d\n", curr_layer_size);
+        for (int j = 0; j < 100; j++) {
+            printf("input = %f\n", grayscale[i - 1][j]);
+        }
+
+        if (i == LAYER_COUNT - 1) {
+            train_cuda<<<1, 62>>>(cuda_input, cuda_output, weight, curr_layer_size, prev_layer_size);
+        } else {
+            train_cuda<<<curr_layer_size / 256, 256>>>(cuda_input, cuda_output, weight, curr_layer_size, prev_layer_size);
+        }
+        cudaMemcpy(grayscale[i], cuda_output, curr_layer_size, cudaMemcpyDeviceToHost);
+
+        //for (int j = 0; j < 10; j++)
+        //printf("output value = %f\n", grayscale[i][j]);
+
+        //cudaMemcpy(weights[i], weight, prev_buff_size, cudaMemcpyDeviceToHost);
+        cudaFree(cuda_input);
+        cudaFree(cuda_output);
+        cudaFree(weight);
     }
-
-    /* Don't forget to close common file before leaving */
-  //  fclose(common_file);
-
 
 //    free(resized_data);
 //    free(original_data);
