@@ -41,7 +41,7 @@ int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
                             FOURTH_LAYER_SIZE,
                             OUTPUT_LAYER_SIZE };
 
-//struct Functions {
+
     __device__ int reLU(int x, int derivative) {
         return derivative ? 1 : max(0, x);
     }
@@ -104,21 +104,25 @@ __global__ void train_cuda(float *input, float *output, float *weights, int curr
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	float sum = 0;
 
-	if (current_layer_size == 62)
-		printf("layer size = %d\n", current_layer_size);
-
+	if (current_layer_size == 62) {
+		index = threadIdx.x;
+	}
 	for (int j = 0; j < prev_layer_size; j++) { 
 		sum += weights[index * prev_layer_size + j] * input[j];
+		if (current_layer_size == 62){
+			//printf("input size = %d\n", sizeof(input));
+//			printf("mul = %f\n", input[j]);
+		}
 	}
-
-	__syncthreads();
-	output[index] = sum;
 	
-	if (current_layer_size == OUTPUT_LAYER_SIZE) {
+	__syncthreads();
+	if (current_layer_size == 62) {
+	//	printf("sum = %f\n", sum);
+		output[index] = sum;
+		//__syncthreads();
 		//softmax(output, current_layer_size);
-		printf("last layer calculated");
-		for (int i = 0; i < current_layer_size; i++)
-			printf("final values = %f\n", output[i]);
+	} else {
+		output[index] = reLU(sum, 0);
 	}
 }
 
@@ -227,10 +231,21 @@ if (file == NULL) {
 	cudaMalloc((void**)&cuda_output, curr_buff_size);
 	cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice);
 	printf("size = %d\n", curr_layer_size);
-	train_cuda<<<getLayerSize(i) / 256, 256>>>(cuda_input, cuda_output, weight, curr_layer_size, prev_layer_size);
-	printf("asdf");
+	for (int j = 0; j < 100; j++) {
+		printf("input = %f\n", grayscale[i - 1][j]);
+	}
+	
+	if (i == LAYER_COUNT - 1) {
+		train_cuda<<<1, 62>>>(cuda_input, cuda_output, weight, curr_layer_size, prev_layer_size);
+	} else {
+		train_cuda<<<curr_layer_size / 256, 256>>>(cuda_input, cuda_output, weight, curr_layer_size, prev_layer_size);
+	}
 	cudaMemcpy(grayscale[i], cuda_output, curr_layer_size, cudaMemcpyDeviceToHost);
-	cudaMemcpy(weights[i], weight, prev_buff_size, cudaMemcpyDeviceToHost);
+	
+	//for (int j = 0; j < 10; j++)
+		//printf("output value = %f\n", grayscale[i][j]);
+	
+	//cudaMemcpy(weights[i], weight, prev_buff_size, cudaMemcpyDeviceToHost);
 	cudaFree(cuda_input);	
 	cudaFree(cuda_output);
 	cudaFree(weight);	
