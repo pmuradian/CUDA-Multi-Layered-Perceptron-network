@@ -20,7 +20,7 @@
 #define LAYER_COUNT 6
 #define INPUT_LAYER_SIZE 4096
 #define FIRST_LAYER_SIZE 8192
-#define SECOND_LAYER_SIZE 6144
+#define SECOND_LAYER_SIZE 30724
 #define THIRD_LAYER_SIZE 3072
 #define FOURTH_LAYER_SIZE 1024
 #define OUTPUT_LAYER_SIZE 62
@@ -65,10 +65,10 @@ __device__ int softmax(double *input, size_t input_len) {
     }
 	printf("max = %lf ", m);
 
-    double sum = 0.0;
+    long double sum = 0.0;
     for (size_t i = 0; i < input_len; i++) {
 	printf("asdf = %f ", input[i] - m);
-        sum += expf(input[i] - m);
+        sum += exp(input[i] - m);
     }
 	//printf("sum = %lf ", sum);
 
@@ -339,7 +339,7 @@ void readInputFrom(char *path) {
         if (i == LAYER_COUNT - 1) {
             cudaMemcpy(cuda_input, grayscale[i], curr_buff_size, cudaMemcpyHostToDevice); // activation function output
 
-            backward_phase_output_layer<<<1, 62>>>(cuda_expected, cuda_input, cuda_output, curr_layer_size, prev_layer_size);
+//            backward_phase_output_layer<<<1, 62>>>(cuda_expected, cuda_input, cuda_output, curr_layer_size, prev_layer_size);
         } else {
             cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice); // activation function output
             cudaMemcpy(cuda_product_sum, product_sum[i], curr_buff_size, cudaMemcpyHostToDevice); // product sum
@@ -352,7 +352,7 @@ void readInputFrom(char *path) {
         cudaMemcpy(error_terms[i], cuda_output, curr_buff_size, cudaMemcpyDeviceToHost);
 
         for (int j = 0; j < 10; j++)
-            printf("output value = %lf\n", grayscale[i][j]);
+            printf("output value = %lf\n", error_terms[i][j]);
 
         //cudaMemcpy(weights[i], weight, prev_buff_size, cudaMemcpyDeviceToHost);
         cudaFree(cuda_input);
@@ -363,6 +363,7 @@ void readInputFrom(char *path) {
         cudaFree(deltas);
         printf("memory freed\n");
     }
+	printf("programm execution complete");
 
 //    free(resized_data);
 //    free(original_data);
