@@ -20,9 +20,9 @@
 #define LAYER_COUNT 6
 #define INPUT_LAYER_SIZE 4096
 #define FIRST_LAYER_SIZE 8192
-#define SECOND_LAYER_SIZE 30724
+#define SECOND_LAYER_SIZE 6144
 #define THIRD_LAYER_SIZE 3072
-#define FOURTH_LAYER_SIZE 1024
+#define FOURTH_LAYER_SIZE 512
 #define OUTPUT_LAYER_SIZE 62
 #define IMAGE_DIMENTIONS 64*64
 #define RANDOM_FLOAT (double)rand() / (double)RAND_MAX
@@ -145,10 +145,10 @@ __global__ void backward_phase(double *activated_values, double *product_sum, do
         sum += weights[index * current_layer_size + i] * deltas[i];
     }
 
-    out_deltas[index] = product_sum[index] * sum;
+    out_deltas[index] = reLU_der(product_sum[index]) * sum;
 
     for (int i = 0; i < prev_layer_size; i++) {
-        out_values[index * prev_layer_size + i] = activated_values[i] * deltas[index];
+        out_values[index * prev_layer_size + i] = activated_values[i] * out_deltas[index];
     }
 }
 
@@ -156,7 +156,7 @@ __global__ void backward_phase(double *activated_values, double *product_sum, do
 __global__ void forward_phase_output_layer(double *input, double *weights, double *output, double *out_product_sum, int current_layer_size, int prev_layer_size) {
 
     int index = threadIdx.x;
-    double sum = 0;
+    long double sum = 0;
 
     for (int j = 0; j < prev_layer_size; j++) {
         sum += weights[index * prev_layer_size + j] * input[j];
@@ -166,6 +166,7 @@ __global__ void forward_phase_output_layer(double *input, double *weights, doubl
     out_product_sum[index] = sum;
     __syncthreads();
     if (index == 0) {
+	printf("sum = %f\n", sum);
         softmax(output, current_layer_size);
     }
 }
@@ -308,7 +309,7 @@ void readInputFrom(char *path) {
         cudaFree(cuda_product_sum);
 	    printf("memory freed\n");
     }
-
+/*
     // backward phase
     for (int i = LAYER_COUNT - 1; i > 0; i--) {
         printf("current layer %d\n", i);
@@ -339,7 +340,7 @@ void readInputFrom(char *path) {
         if (i == LAYER_COUNT - 1) {
             cudaMemcpy(cuda_input, grayscale[i], curr_buff_size, cudaMemcpyHostToDevice); // activation function output
 
-//            backward_phase_output_layer<<<1, 62>>>(cuda_expected, cuda_input, cuda_output, curr_layer_size, prev_layer_size);
+            backward_phase_output_layer<<<1, 62>>>(cuda_expected, cuda_input, cuda_output, curr_layer_size, prev_layer_size);
         } else {
             cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice); // activation function output
             cudaMemcpy(cuda_product_sum, product_sum[i], curr_buff_size, cudaMemcpyHostToDevice); // product sum
