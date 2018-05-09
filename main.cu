@@ -346,7 +346,7 @@ void readInputFrom(char *path) {
             cudaMemcpy(deltas, error_terms[i + 1], next_buff_size, cudaMemcpyHostToDevice); // error terms
             cudaMemcpy(weight, weights[i], curr_layer_size * next_buff_size * sizeof(double), cudaMemcpyHostToDevice); // weights
 
-            backward_phase<<<curr_layer_size / 256, 256>>>(cuda_input, cuda_product_sum, deltas, weight, out_deltas, cuda_output, curr_layer_size, prev_layer_size);
+            backward_phase<<<curr_layer_size / 256, 256>>>(cuda_input, cuda_product_sum, deltas, weight, out_deltas, cuda_output, curr_layer_size, prev_layer_size, next_layer_size);
         }
 
         cudaMemcpy(error_terms[i], cuda_output, curr_buff_size, cudaMemcpyDeviceToHost);
