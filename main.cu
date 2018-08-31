@@ -22,7 +22,7 @@
 #define FIRST_LAYER_SIZE 8192
 #define SECOND_LAYER_SIZE 6144
 #define THIRD_LAYER_SIZE 3072
-#define FOURTH_LAYER_SIZE 512
+#define FOURTH_LAYER_SIZE 1024
 #define OUTPUT_LAYER_SIZE 62
 #define IMAGE_DIMENTIONS 64*64
 #define RANDOM_FLOAT (double)rand() / (double)RAND_MAX
@@ -67,7 +67,7 @@ __device__ int softmax(double *input, size_t input_len) {
 
     long double sum = 0.0;
     for (size_t i = 0; i < input_len; i++) {
-	printf("asdf = %f ", input[i] - m);
+	printf("asdf = %f\n", input[i] - m);
         sum += exp(input[i] - m);
     }
 	//printf("sum = %lf ", sum);
@@ -184,6 +184,12 @@ __global__ void forward_phase(double *input, double *weights, double *output, do
     output[index] = reLU(sum);
 }
 
+void readFileFromPath(char *path) {
+}
+
+void train() {
+}
+
 void readInputFrom(char *path) {
     DIR* FD;
     struct dirent* in_file;
@@ -242,6 +248,9 @@ void readInputFrom(char *path) {
 
     // Initialize weights
     double *weights[LAYER_COUNT];
+int iteration = 0;
+int num_iterations = 10;
+
 
     for (int k = 1; k < LAYER_COUNT; k++) {
         int size = getLayerSize(k);
@@ -270,11 +279,12 @@ void readInputFrom(char *path) {
         if (i == 0)
             expected_output[i] = 1;
     }
-
+while (++iteration < num_iterations) {
+	printf("iteration = %d\n", iteration);
     // forward phase
     for (int i = 1; i < LAYER_COUNT; i++) {
         printf("current layer %d\n", i);
-	    double *weight;
+	double *weight;
         double *cuda_input;
         double *cuda_output;
         double *cuda_product_sum;
@@ -290,7 +300,9 @@ void readInputFrom(char *path) {
 
         cudaMemcpy(weight, weights[i - 1], curr_layer_size * prev_layer_size * sizeof(double), cudaMemcpyHostToDevice);
         cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice);
-        printf("size = %d\n", curr_layer_size);
+//        printf("size = %d\n", curr_layer_size);
+//	for (int j = 0; j < 10; j++)
+//            printf("input value = %lf\n", grayscale[i - 1][j]);
 
         if (i == LAYER_COUNT - 1) {
             forward_phase_output_layer<<<1, 62>>>(cuda_input, weight, cuda_output, cuda_product_sum, curr_layer_size, prev_layer_size);
@@ -300,8 +312,8 @@ void readInputFrom(char *path) {
         cudaMemcpy(grayscale[i], cuda_output, curr_buff_size, cudaMemcpyDeviceToHost);
         cudaMemcpy(product_sum[i], cuda_product_sum, curr_buff_size, cudaMemcpyDeviceToHost);
 
-        for (int j = 0; j < 10; j++)
-            printf("output value = %lf\n", grayscale[i][j]);
+  //      for (int j = 0; j < 10; j++)
+  //          printf("output value = %lf\n", grayscale[i][j]);
 
         cudaFree(cuda_input);
         cudaFree(cuda_output);
@@ -309,7 +321,7 @@ void readInputFrom(char *path) {
         cudaFree(cuda_product_sum);
 	    printf("memory freed\n");
     }
-/*
+
     // backward phase
     for (int i = LAYER_COUNT - 1; i > 0; i--) {
         printf("current layer %d\n", i);
@@ -363,7 +375,7 @@ void readInputFrom(char *path) {
         cudaFree(weight);
         cudaFree(deltas);
         printf("memory freed\n");
-    }
+    }}
 	printf("programm execution complete");
 
 //    free(resized_data);
