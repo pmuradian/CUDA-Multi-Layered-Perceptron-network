@@ -124,7 +124,7 @@ int **createInitialBiases() {
 }
 
 // TODO: use cuda
-void createWeights(int isRandom, int** weights) {
+void createWeights(int isRandom, double** weights) {
     for (int k = 1; k < LAYER_COUNT; k++) {
         int size = getLayerSize(k);
         int previous_layer_size = getLayerSize(k - 1);
@@ -133,7 +133,7 @@ void createWeights(int isRandom, int** weights) {
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < previous_layer_size; j++) {
                 // weight for node i in layer k from node j in layer k - 1
-                weight[i * previous_layer_size + j] = random ? random_double() : 1;
+                weight[i * previous_layer_size + j] = isRandom ? random_double() : 1;
             }
         }
         weights[k - 1] = weight;
@@ -206,9 +206,7 @@ void readFileFromPath(char *path, unsigned char *resized_data) {
     int img_colors = 0;
     int is_asci = 0;
     int pnm_type = 0;
-    int **biases;
 
-    int isRandom = 1;
     if (file == NULL) {
         printf("file is null \n");
     } else {
@@ -222,9 +220,6 @@ void readFileFromPath(char *path, unsigned char *resized_data) {
     printf("Success\n");
 
     unsigned char *original_data = (unsigned char*)malloc(3 * x_dim * y_dim * sizeof(char));
-    double *grayscale[LAYER_COUNT];
-    double *product_sum[LAYER_COUNT];
-    double *error_terms[LAYER_COUNT];
     int output = 0;
 
     int *image_data = (int*)malloc(3 * x_dim * y_dim * sizeof(int));
@@ -243,6 +238,10 @@ void startTraining(char *path) {
     readFileFromPath("./Training/00000/01153_00000.ppm", resized_data);
     // Convert to grayscale
     printf("Image converted to grayscale\n");
+    double *grayscale[LAYER_COUNT];
+    double *product_sum[LAYER_COUNT];
+    double *error_terms[LAYER_COUNT];
+    int isRandom = 1;
     grayscale[0] = toGrayScale(resized_data, X_DIM, Y_DIM);
 
     // Initialize product sum and error terms
@@ -257,7 +256,8 @@ void startTraining(char *path) {
 
     // Initialize weights
     double *weights[LAYER_COUNT];
-    createWeights(random, weights);
+    int **biases;
+    createWeights(isRandom, weights);
     biases = createInitialBiases();
 
     int input_number = 0;
