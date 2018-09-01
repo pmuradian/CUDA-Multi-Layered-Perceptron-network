@@ -33,6 +33,8 @@
 #define INF 2e10f
 #define SPHERES 100
 #define THREADS 256
+#define X_DIM 64
+#define Y_DIM 64
 
 
 int layers[LAYER_COUNT] = { INPUT_LAYER_SIZE,
@@ -121,15 +123,23 @@ int **createInitialBiases() {
     return biases;
 }
 
-//__global__ void createWeights(double *weights, int curr_layer_size, int prev_layer_size, int isRandom) {
-//    int index = blockIdx.x * blockDim.x + threadIdx.x;
-//    if (isRandom != 0) {
-//        // curand
-//    } else {
-//
-//    }
-//
-//}
+// TODO: use cuda
+void createWeights(int isRandom, int** weights) {
+    for (int k = 1; k < LAYER_COUNT; k++) {
+        int size = getLayerSize(k);
+        int previous_layer_size = getLayerSize(k - 1);
+        double *weight = (double*)malloc(size * previous_layer_size * sizeof(double));
+
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < previous_layer_size; j++) {
+                // weight for node i in layer k from node j in layer k - 1
+                weight[i * previous_layer_size + j] = random ? random_double() : 1;
+            }
+        }
+        weights[k - 1] = weight;
+        int block_count = getLayerSize(k) / THREADS;
+    }
+}
 
 __global__ void backward_phase_output_layer(double *expected_values, double *calculated_values, double *out_delta, int current_layer_size, int prev_layer_size) {
     int index = threadIdx.x;
@@ -139,12 +149,10 @@ __global__ void backward_phase_output_layer(double *expected_values, double *cal
 __global__ void backward_phase(double *activated_values, double *product_sum, double *weights, double *deltas, double *out_deltas, double *out_values, int current_layer_size, int prev_layer_size, int next_layer_size) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     double sum = 0;
-//    __shared__ double values[OUTPUT_LAYER_SIZE];
 
     for (int i = 0; i < next_layer_size; i++) {
         sum += weights[index * current_layer_size + i] * deltas[i];
     }
-
     out_deltas[index] = reLU_der(product_sum[index]) * sum;
 
     for (int i = 0; i < prev_layer_size; i++) {
@@ -166,7 +174,7 @@ __global__ void forward_phase_output_layer(double *input, double *weights, doubl
     out_product_sum[index] = sum;
     __syncthreads();
     if (index == 0) {
-	printf("sum = %f\n", sum);
+	    printf("sum = %f\n", sum);
         softmax(output, current_layer_size);
     }
 }
@@ -184,20 +192,15 @@ __global__ void forward_phase(double *input, double *weights, double *output, do
     output[index] = reLU(sum);
 }
 
-void readFileFromPath(char *path) {
-}
-
-void train() {
-}
-
-void readInputFrom(char *path) {
+// reads input file and returns resized 64x64 image data
+void readFileFromPath(char *path, unsigned char *resized_data) {
     DIR* FD;
     struct dirent* in_file;
     FILE    *common_file;
     FILE    *entry_file;
     char    buffer[14];
 
-    FILE *file = fopen("./Training/00000/01153_00000.ppm", "rb");
+    FILE *file = fopen(path, "rb");
     int x_dim;
     int y_dim;
     int img_colors = 0;
@@ -219,7 +222,6 @@ void readInputFrom(char *path) {
     printf("Success\n");
 
     unsigned char *original_data = (unsigned char*)malloc(3 * x_dim * y_dim * sizeof(char));
-    unsigned char *resized_data = (unsigned char*)malloc(3 * 64 * 64 * sizeof(char));
     double *grayscale[LAYER_COUNT];
     double *product_sum[LAYER_COUNT];
     double *error_terms[LAYER_COUNT];
@@ -233,10 +235,17 @@ void readInputFrom(char *path) {
     }
 
     stbir_resize_uint8(original_data, x_dim, y_dim, 0, resized_data, 64, 64, 0, 3);
+    fclose(file);
+}
 
+void startTraining(char *path) {
+    unsigned char *resized_data = (unsigned char*)malloc(3 * X_DIM * Y_DIM * sizeof(char));
+    readFileFromPath("./Training/00000/01153_00000.ppm", resized_data);
     // Convert to grayscale
     printf("Image converted to grayscale\n");
-    grayscale[0] = toGrayScale(resized_data, x_dim, y_dim);
+    grayscale[0] = toGrayScale(resized_data, X_DIM, Y_DIM);
+
+    // Initialize product sum and error terms
     product_sum[0] = (double *)malloc(getLayerSize(0) * sizeof(double));
     error_terms[0] = (double *)malloc(getLayerSize(0) * sizeof(double));
 
@@ -248,201 +257,118 @@ void readInputFrom(char *path) {
 
     // Initialize weights
     double *weights[LAYER_COUNT];
-int iteration = 0;
-int num_iterations = 10;
-
-
-    for (int k = 1; k < LAYER_COUNT; k++) {
-        int size = getLayerSize(k);
-        int previous_layer_size = getLayerSize(k - 1);
-        double *weight = (double*)malloc(size * previous_layer_size * sizeof(double));
-
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < previous_layer_size; j++) {
-                // weight for node i in layer k from node j in layer k - 1
-                weight[i * previous_layer_size + j] = random ? random_double() : 1;
-            }
-        }
-        weights[k - 1] = weight;
-        int block_count = getLayerSize(k) / THREADS;
-    }
-
+    createWeights(random, weights);
     biases = createInitialBiases();
 
-    fclose(file);
-
     int input_number = 0;
-
+    int iteration = 0;
+    int num_iterations = 10;
     double expected_output[OUTPUT_LAYER_SIZE];
+
     for (int i = 0; i < OUTPUT_LAYER_SIZE; i++) {
         expected_output[i] = 0.0;
         if (i == 0)
             expected_output[i] = 1;
     }
-while (++iteration < num_iterations) {
-	printf("iteration = %d\n", iteration);
-    // forward phase
-    for (int i = 1; i < LAYER_COUNT; i++) {
-        printf("current layer %d\n", i);
-	double *weight;
-        double *cuda_input;
-        double *cuda_output;
-        double *cuda_product_sum;
-        int curr_layer_size = getLayerSize(i);
-        int prev_layer_size = getLayerSize(i - 1);
-        int curr_buff_size = curr_layer_size * sizeof(double);
-        int prev_buff_size = prev_layer_size * sizeof(double);
 
-        cudaMalloc((void**)&weight, curr_layer_size * prev_layer_size * sizeof(double));
-        cudaMalloc((void**)&cuda_input, prev_buff_size);
-        cudaMalloc((void**)&cuda_output, curr_buff_size);
-        cudaMalloc((void**)&cuda_product_sum, curr_buff_size);
+    while (++iteration < num_iterations) {
+	    printf("iteration = %d\n", iteration);
+        // forward phase
+        for (int i = 1; i < LAYER_COUNT; i++) {
+            printf("current layer %d\n", i);
+	        double *weight;
+            double *cuda_input;
+            double *cuda_output;
+            double *cuda_product_sum;
+            int curr_layer_size = getLayerSize(i);
+            int prev_layer_size = getLayerSize(i - 1);
+            int curr_buff_size = curr_layer_size * sizeof(double);
+            int prev_buff_size = prev_layer_size * sizeof(double);
 
-        cudaMemcpy(weight, weights[i - 1], curr_layer_size * prev_layer_size * sizeof(double), cudaMemcpyHostToDevice);
-        cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice);
-//        printf("size = %d\n", curr_layer_size);
-//	for (int j = 0; j < 10; j++)
-//            printf("input value = %lf\n", grayscale[i - 1][j]);
+            cudaMalloc((void**)&weight, curr_layer_size * prev_layer_size * sizeof(double));
+            cudaMalloc((void**)&cuda_input, prev_buff_size);
+            cudaMalloc((void**)&cuda_output, curr_buff_size);
+            cudaMalloc((void**)&cuda_product_sum, curr_buff_size);
 
-        if (i == LAYER_COUNT - 1) {
-            forward_phase_output_layer<<<1, 62>>>(cuda_input, weight, cuda_output, cuda_product_sum, curr_layer_size, prev_layer_size);
-        } else {
-            forward_phase<<<curr_layer_size / 256, 256>>>(cuda_input, weight, cuda_output, cuda_product_sum, curr_layer_size, prev_layer_size);
+            cudaMemcpy(weight, weights[i - 1], curr_layer_size * prev_layer_size * sizeof(double), cudaMemcpyHostToDevice);
+            cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice);
+//            printf("size = %d\n", curr_layer_size);
+//	          for (int j = 0; j < 10; j++)
+//                printf("input value = %lf\n", grayscale[i - 1][j]);
+
+            if (i == LAYER_COUNT - 1) {
+                forward_phase_output_layer<<<1, 62>>>(cuda_input, weight, cuda_output, cuda_product_sum, curr_layer_size, prev_layer_size);
+            } else {
+                forward_phase<<<curr_layer_size / 256, 256>>>(cuda_input, weight, cuda_output, cuda_product_sum, curr_layer_size, prev_layer_size);
+            }
+            cudaMemcpy(grayscale[i], cuda_output, curr_buff_size, cudaMemcpyDeviceToHost);
+            cudaMemcpy(product_sum[i], cuda_product_sum, curr_buff_size, cudaMemcpyDeviceToHost);
+
+  //          for (int j = 0; j < 10; j++)
+  //              printf("output value = %lf\n", grayscale[i][j]);
+
+            cudaFree(cuda_input);
+            cudaFree(cuda_output);
+            cudaFree(weight);
+            cudaFree(cuda_product_sum);
+	        printf("memory freed\n");
         }
-        cudaMemcpy(grayscale[i], cuda_output, curr_buff_size, cudaMemcpyDeviceToHost);
-        cudaMemcpy(product_sum[i], cuda_product_sum, curr_buff_size, cudaMemcpyDeviceToHost);
 
-  //      for (int j = 0; j < 10; j++)
-  //          printf("output value = %lf\n", grayscale[i][j]);
+        // backward phase
+        for (int i = LAYER_COUNT - 1; i > 0; i--) {
+            printf("current layer %d\n", i);
+            double *weight;
+            double *cuda_input;
+            double *deltas;
+            double *out_deltas;
+            double *cuda_expected;
+            double *cuda_output;
+            double *cuda_product_sum;
+            int curr_layer_size = getLayerSize(i);
+            int prev_layer_size = getLayerSize(i - 1);
+            int next_layer_size = getLayerSize(i + 1);
+            int curr_buff_size = curr_layer_size * sizeof(double);
+            int prev_buff_size = prev_layer_size * sizeof(double);
+            int next_buff_size = next_buff_size * sizeof(double);
+            cudaMalloc((void**)&weight, curr_layer_size * next_layer_size * sizeof(double));
+            cudaMalloc((void**)&cuda_input, curr_buff_size);
+            cudaMalloc((void**)&cuda_output, prev_buff_size);
+            cudaMalloc((void**)&cuda_expected, curr_buff_size);
+            cudaMalloc((void**)&deltas, prev_buff_size);
+            cudaMalloc((void**)&cuda_product_sum, curr_buff_size);
 
-        cudaFree(cuda_input);
-        cudaFree(cuda_output);
-        cudaFree(weight);
-        cudaFree(cuda_product_sum);
-	    printf("memory freed\n");
+            printf("size = %d\n", curr_layer_size);
+
+            if (i == LAYER_COUNT - 1) {
+                cudaMemcpy(cuda_input, grayscale[i], curr_buff_size, cudaMemcpyHostToDevice); // activation function output
+                backward_phase_output_layer<<<1, 62>>>(cuda_expected, cuda_input, cuda_output, curr_layer_size, prev_layer_size);
+            } else {
+                cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice); // activation function output
+                cudaMemcpy(cuda_product_sum, product_sum[i], curr_buff_size, cudaMemcpyHostToDevice); // product sum
+                cudaMemcpy(deltas, error_terms[i + 1], next_buff_size, cudaMemcpyHostToDevice); // error terms
+                cudaMemcpy(weight, weights[i], curr_layer_size * next_buff_size * sizeof(double), cudaMemcpyHostToDevice); // weights
+                backward_phase<<<curr_layer_size / 256, 256>>>(cuda_input, cuda_product_sum, deltas, weight, out_deltas, cuda_output, curr_layer_size, prev_layer_size, next_layer_size);
+            }
+
+            cudaMemcpy(error_terms[i], cuda_output, curr_buff_size, cudaMemcpyDeviceToHost);
+
+            for (int j = 0; j < 10; j++)
+                printf("output value = %lf\n", error_terms[i][j]);
+
+            //cudaMemcpy(weights[i], weight, prev_buff_size, cudaMemcpyDeviceToHost);
+            cudaFree(cuda_input);
+            cudaFree(cuda_output);
+            cudaFree(cuda_product_sum);
+            cudaFree(cuda_expected);
+            cudaFree(weight);
+            cudaFree(deltas);
+            printf("memory freed\n");
+        }
     }
-
-    // backward phase
-    for (int i = LAYER_COUNT - 1; i > 0; i--) {
-        printf("current layer %d\n", i);
-        double *weight;
-        double *cuda_input;
-        double *deltas;
-        double *out_deltas;
-        double *cuda_expected;
-        double *cuda_output;
-        double *cuda_product_sum;
-        int curr_layer_size = getLayerSize(i);
-        int prev_layer_size = getLayerSize(i - 1);
-        int next_layer_size = getLayerSize(i + 1);
-        int curr_buff_size = curr_layer_size * sizeof(double);
-        int prev_buff_size = prev_layer_size * sizeof(double);
-        int next_buff_size = next_buff_size * sizeof(double);
-        cudaMalloc((void**)&weight, curr_layer_size * next_layer_size * sizeof(double));
-        cudaMalloc((void**)&cuda_input, curr_buff_size);
-        cudaMalloc((void**)&cuda_output, prev_buff_size);
-        cudaMalloc((void**)&cuda_expected, curr_buff_size);
-        cudaMalloc((void**)&deltas, prev_buff_size);
-        cudaMalloc((void**)&cuda_product_sum, curr_buff_size);
-
-
-
-        printf("size = %d\n", curr_layer_size);
-
-        if (i == LAYER_COUNT - 1) {
-            cudaMemcpy(cuda_input, grayscale[i], curr_buff_size, cudaMemcpyHostToDevice); // activation function output
-
-            backward_phase_output_layer<<<1, 62>>>(cuda_expected, cuda_input, cuda_output, curr_layer_size, prev_layer_size);
-        } else {
-            cudaMemcpy(cuda_input, grayscale[i - 1], prev_buff_size, cudaMemcpyHostToDevice); // activation function output
-            cudaMemcpy(cuda_product_sum, product_sum[i], curr_buff_size, cudaMemcpyHostToDevice); // product sum
-            cudaMemcpy(deltas, error_terms[i + 1], next_buff_size, cudaMemcpyHostToDevice); // error terms
-            cudaMemcpy(weight, weights[i], curr_layer_size * next_buff_size * sizeof(double), cudaMemcpyHostToDevice); // weights
-
-            backward_phase<<<curr_layer_size / 256, 256>>>(cuda_input, cuda_product_sum, deltas, weight, out_deltas, cuda_output, curr_layer_size, prev_layer_size, next_layer_size);
-        }
-
-        cudaMemcpy(error_terms[i], cuda_output, curr_buff_size, cudaMemcpyDeviceToHost);
-
-        for (int j = 0; j < 10; j++)
-            printf("output value = %lf\n", error_terms[i][j]);
-
-        //cudaMemcpy(weights[i], weight, prev_buff_size, cudaMemcpyDeviceToHost);
-        cudaFree(cuda_input);
-        cudaFree(cuda_output);
-        cudaFree(cuda_product_sum);
-        cudaFree(cuda_expected);
-        cudaFree(weight);
-        cudaFree(deltas);
-        printf("memory freed\n");
-    }}
-	printf("programm execution complete");
-
-//    free(resized_data);
-//    free(original_data);
-//	for (int i = 0; i < LAYER_COUNT; i++) {
-//	    free(grayscale[i]);
-//	}
-
     // TODO: free for every malloc
     //free(weights);
     //free(biases);
-
-
-    /* Openiing common file for writing */
-//    common_file = fopen(path, "w");
-//    if (common_file == NULL)
-//    {
-//        fprintf(stderr, "Error : Failed to open common_file - %s\n", strerror(errno));
-//        return;
-//    }
-
-//    PPM ppm = easyppm_create(141, 142, IMAGETYPE_PPM);
-//    easyppm_read(&ppm, "/Users/azazel/Documents/Projects/MIMUW/CUDA/Training/00000/01153_00000.ppm");
-//    if (NULL == (FD = opendir(path)))
-//    {
-//        fprintf(stderr, "Error : Failed to open input directory - %s\n", strerror(errno));
-//        fclose(common_file);
-//
-//        return;
-//    }
-//    while ((in_file = readdir(FD)))
-//    {
-//
-//        if (!strcmp (in_file->d_name, "."))
-//            continue;
-//        if (!strcmp (in_file->d_name, ".."))
-//            continue;
-//        /* Open directory entry file for common operation */
-
-//        PPM ppm = easyppm_create(120, 120, IMAGETYPE_PPM);
-//        easyppm_read(&ppm, "/Users/azazel/Documents/Projects/MIMUW/CUDA/Training/00000/01153_00000.ppm");
-//
-//
-
-
-//        printf(ppm.image);
-
-//        entry_file = fopen(in_file->d_name, "rw");
-//        if (entry_file == NULL)
-//        {
-//            fprintf(stderr, "Error : Failed to open entry file - %s\n", strerror(errno));
-//            fclose(common_file);
-//
-//            return;
-//        }
-//
-//        /* Doing some struf with entry_file : */
-//        /* For example use fgets */
-//        while (fgets(buffer, BUFSIZ, entry_file) != NULL)
-//        {
-//            /* Use fprintf or fwrite to write some stuff into common_file */
-//            printf(entry_file);
-//        }
-//
-//        /* When you finish with the file, close it */
-//        fclose(entry_file);
-//    }
+    printf("programm execution complete");
 }
 
 int main(int argc, char **argv) {
@@ -452,9 +378,8 @@ int main(int argc, char **argv) {
     double rate = DEFAULT_RATE;
     int epoch = DEFAULT_EPOCH;
 
-    if (argc % 2 != 0) {
+    if (argc % 2 != 0)
         printf("Not enough arguments passed");
-    }
 
     for (int i = 0; i < argc; i += 2) {
         if (strcmp(argv[i], "--training_data")) {
@@ -468,7 +393,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    readInputFrom(data_path);
-
+    startTraining(data_path);
     return 0;
 }
